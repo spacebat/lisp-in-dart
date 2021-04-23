@@ -243,7 +243,7 @@ class Cell {
 
 
 /// mapcar((a b c), fn) => (fn(a) fn(b) fn(c))
-Cell mapcar(Cell j, fn(x)) {
+Cell? mapcar(Cell j, fn(x)) {
   if (j == null)
     return null;
   var a = fn(j.car);
@@ -298,7 +298,7 @@ class Sym {
 /// Expression keyword
 class Keyword extends Sym {
   Keyword.internal(String name): super.internal(name);
-  factory Keyword(String name) => Sym(name, true);
+  factory Keyword(String name) => Sym(name, true) as Keyword;
 }
 
 
@@ -332,7 +332,7 @@ abstract class Func {
 
   /// Makes a frame for local variables from a list of actual arguments.
   List makeFrame(Cell arg) {
-    List frame = List(arity);
+    List frame = List.filled(arity, Object);
     int n = fixedArgs;
     int i;
     for (i = 0; i < n && arg != null; i++) { // Sets the list of fixed args.
@@ -352,15 +352,15 @@ abstract class Func {
     for (int i = 0; i < n; i++)
       frame[i] = interp.eval(frame[i], env);
     if (hasRest && frame[n] is Cell) {
-      Cell z = null;
-      Cell y = null;
+      Cell? z = null;
+      Cell? y = null;
       for (Cell j = frame[n]; j != null; j = cdrCell(j)) {
         var e = interp.eval(j.car, env);
         Cell x = Cell(e, null);
         if (z == null)
           z = x;
         else
-          y.cdr = x;
+          y?.cdr = x;
         y = x;
       }
       frame[n] = z;
@@ -426,7 +426,7 @@ class Closure extends DefinedFunc {
   @override String toString() => "#<closure:$carity:${str(env)}:${str(body)}>";
 
   /// Makes an environment to evaluate the body from a list of actual args.
-  Cell makeEnv(Interp interp, Cell arg, Cell interpEnv) {
+  Cell makeEnv(Interp interp, Cell arg, Cell? interpEnv) {
     List frame = makeFrame(arg);
     evalFrame(frame, interp, interpEnv);
     return Cell(frame, env);    // Prepends the frame to the closure's env.
@@ -449,7 +449,7 @@ class BuiltInFunc extends Func {
   @override String toString() => "#<$name:$carity>";
 
   /// Invokes the built-in function with a list of actual arguments.
-  evalWith(Interp interp, Cell arg, Cell interpEnv) {
+  evalWith(Interp interp, Cell arg, Cell? interpEnv) {
     List frame = makeFrame(arg);
     evalFrame(frame, interp, interpEnv);
     try {
@@ -480,10 +480,12 @@ class Arg {
   }
 
   /// Gets a value from the location corresponding to the variable in [env].
-  getValue(Cell env) {
-    for (int i = 0; i < level; i++)
-      env = env.cdr;
-    return env.car[offset];
+  getValue(Cell? env) {
+    if (env is Null) {
+      return null;
+    }
+    for (int i = 0; i < level; i++) env = env?.cdr;
+    return env?.car[offset];
   }
 }
 
@@ -522,8 +524,8 @@ class Interp {
 
   /// Sets built-in functions etc. as the global values of symbols.
   Interp() {
-    def("car", 1, (List a) => (a[0] as Cell)?.car);
-    def("cdr", 1, (List a) => (a[0] as Cell)?.cdr);
+    def("car", 1, (List a) => (a[0] as Cell?)?.car);
+    def("cdr", 1, (List a) => (a[0] as Cell?)?.cdr);
     def("cons", 2, (List a) => Cell(a[0], a[1]));
     def("atom", 1, (List a) => (a[0] is Cell) ? null : true);
     def("eq", 2, (List a) => identical(a[0], a[1]) ? true : null);
@@ -574,7 +576,7 @@ class Interp {
     var gensymCounterSym = Sym("*gensym-counter*");
     globals[gensymCounterSym] = 1;
     def("gensym", 0, (List a) {
-      int i = globals[gensymCounterSym];
+      int i = globals[gensymCounterSym] as int;
       globals[gensymCounterSym] = i + 1;
       return new Sym.internal("G$i");
     });
@@ -598,7 +600,7 @@ class Interp {
   }
 
   /// Evaluates a Lisp expression in an environment.
-  eval(x, Cell env) {
+  eval(x, Cell? env) {
     try {
       for (;;) {
         if (x is Arg) {
@@ -670,7 +672,7 @@ class Interp {
   }
 
   /// (progn E1 E2.. En) => Evaluates E1, E2, .. except for En and returns it.
-  _evalProgN(Cell j, Cell env) {
+  _evalProgN(Cell j, Cell? env) {
     if (j == null)
       return null;
     for (;;) {
@@ -683,7 +685,7 @@ class Interp {
   }
 
   /// Evaluates a conditional expression and returns the selection unevaluated.
-  _evalCond(Cell j, Cell env) {
+  _evalCond(Cell j, Cell? env) {
     for (; j != null; j = cdrCell(j)) {
       var clause = j.car;
       if (clause is Cell) {
@@ -703,7 +705,7 @@ class Interp {
   }
 
   /// (setq V1 E1 ..) => Evaluates Ei and assigns it to Vi; returns the last.
-  _evalSetQ(Cell j, Cell env) {
+  _evalSetQ(Cell j, Cell? env) {
     var result = null;
     for (; j != null; j = cdrCell(j)) {
       var lval = j.car;
@@ -722,7 +724,7 @@ class Interp {
   }
 
   /// Compiles a Lisp list (macro ...) or (lambda ...).
-  DefinedFunc _compile(Cell arg, Cell env, FuncFactory make) {
+  DefinedFunc _compile(Cell arg, Cell? env, FuncFactory make) {
     if (arg == null)
       throw EvalException("arglist and body expected", arg);
     Map<Sym, Arg> table = {};
@@ -1101,7 +1103,7 @@ final Map<Sym, String> _quotes = <Sym, String>{
 };
 
 /// Makes a string representation of a Lisp expression
-String str(x, [bool quoteString=true, int count, Set<Cell> printed]) {
+String str(x, [bool quoteString=true, int? count, Set<Cell>? printed]) {
   if (x == null) {
     return "nil";
   } else if (x == true) {
@@ -1143,7 +1145,7 @@ String str(x, [bool quoteString=true, int count, Set<Cell> printed]) {
 }
 
 /// Makes a string representation of a list omitting its "(" and ")".
-String _strListBody(Cell x, int count, Set<Cell> printed) {
+String _strListBody(Cell x, int? count, Set<Cell>? printed) {
   printed ??= Set<Cell>();
   count ??= 4;                  // threshold of ellipsis for circular lists
   var s = List<String>();
@@ -1172,7 +1174,7 @@ String _strListBody(Cell x, int count, Set<Cell> printed) {
 //----------------------------------------------------------------------
 
 /// Runs REPL (Read-Eval-Print Loop).
-Future run(Interp interp, Stream<String> input) async {
+Future run(Interp interp, Stream<String>? input) async {
   bool interactive = (input == null);
   input ??= stdin.transform(const Utf8Codec().decoder);
   input = input.transform(const LineSplitter());
